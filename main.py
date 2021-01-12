@@ -24,9 +24,7 @@ base_filename="three_body_integrals"
 h_filename = "{}.h".format(base_filename)
 c_filename = "{}.cpp".format(base_filename) # C++ because of double3
 
-def main():
-    
-    
+def main(MAX_L):
     # Write TBIs
     printing.write_integral_files(h_filename, c_filename, disclaimer_text, MAX_L)
     
