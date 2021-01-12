@@ -146,10 +146,12 @@ class Condition(Value):
             return "{}({})".format(self.op, self.var)
         else: # binary operator
             return "{} {} {}".format(self.var, self.op, self.var2)
-def And(conds : List[Value]) -> OpTree:
-    return op_reduce(Op.AND, conds)
-def Or(conds : List[Value]) -> OpTree:
-    return op_reduce(Op.OR, conds)
+def And(*conds : Value) -> OpTree:
+    assert len(conds) > 1
+    return op_reduce(Op.AND, list(conds))
+def Or(*conds : Value) -> OpTree:
+    assert len(conds) > 1
+    return op_reduce(Op.OR, list(conds))
 
 ######### Statements ##############
 

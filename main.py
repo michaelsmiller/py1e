@@ -1,6 +1,5 @@
 # All local modules
 import printing
-import templates
 import integrals
 
 import argparse
@@ -26,12 +25,12 @@ c_filename = "{}.cpp".format(base_filename) # C++ because of double3
 
 def main(MAX_L):
     # Write TBIs
-    printing.write_integral_files(h_filename, c_filename, disclaimer_text, MAX_L)
+    # printing.write_integral_files(h_filename, c_filename, disclaimer_text, MAX_L)
     
     # Generate and print function for dipoles
-    function_disclaimer = templates.generate_disclaimer(function_disclaimer_text)
-#     print(printing.generate_update_func(1, "D", "DipoleMatrix", function_disclaimer, MAX_L))
-    print(printing.generate_update_func(1, "D", "DipoleMatrix", function_disclaimer, MAX_L))
+    function_disclaimer = printing.generate_disclaimer(function_disclaimer_text)
+    # print(printing.generate_update_func(1, "D", "DipoleMatrix", function_disclaimer, MAX_L))
+    print(printing.generate_update_func(2, "Q", "QuadrupoleMatrix", function_disclaimer, MAX_L))
 
 if __name__ == "__main__":
     # argument parsing
