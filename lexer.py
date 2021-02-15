@@ -5,6 +5,7 @@ import re
 from enum import Enum, auto
 from dataclasses import dataclass
 import itertools
+from typing import Sequence
 
 class Type(Enum):
     NAME = auto()
@@ -14,6 +15,7 @@ class Type(Enum):
     DOT = auto()
     COMMA = auto()
     OPERATOR = auto()
+    EPSILON = auto()
 
 @dataclass
 class Token:
@@ -33,7 +35,7 @@ name_regex = re.compile(r'[a-zA-Z_][a-zA-Z_0-9]*')
 op_regex = re.compile(r'[+\-*/]')
 associations = [(op_regex, Type.OPERATOR), (name_regex, Type.NAME), (number_regex, Type.NUMBER), ('.', Type.DOT), (',', Type.COMMA), ('(', Type.OPEN_PAREN), (')', Type.CLOSE_PAREN)]
 
-def tokenize(s):
+def tokenize(s) -> Sequence[Token]:
     # Treats word breaks as token boundaries
     # if " " in s:
     #     return list(itertools.chain.from_iterable([tokenize(w) for w in s.split()]))
@@ -66,78 +68,12 @@ def tokenize(s):
             sys.exit(1)
         else:
             i = j
+    tokens.append(Token(Type.EPSILON, "")) # Adds epsilon at the end for parsing simplicity
     return tokens
-
-
-class AmountMod(Enum):
-    One = auto()
-    OneOrMore = auto()
-    ZeroOrMore = auto()
-    Sequence = auto()
-def match_amount(amount, tokens, i):
-    if amount == Amount.One:
-
-def get_string(tokens):
-    # return "|".join([t.val for t in tokens])
-    return " ".join([t.val for t in tokens])
-
-
-# TOKENS
-# name, number, operation, (, ), ',', '.'
-
-# GRAMMAR:
-# expr = val
-# val = function | number | var
-# function = name '(' (val ',')* ')'
-# var = name
-# operation = val operator val
-
-def find_closing(tokens, start, end=len(tokens)):
-    balance = 1
-    for i in range(start, end):
-        if tokens[i].t == Type.OPEN_PAREN:
-            balance += 1
-        elif tokens[i].t == Type.CLOSE_PAREN:
-            balance -= 1
-        if balance == 0:
-            return i
-    print("Couldn't find right paren")
-    sys.exit(1)
-    
-def parse_parens(tokens, start, end):
-    if tokens[start].t != Type.OPEN_PAREN:
-        return
-    start = start + 1
-    end = find_closing(tokens, start, end)
-    for val, end1 in parse_val(tokens, start, end):
-        if end == end1:
-            return Parens(val), end+1
-def parse_function(tokens, start, end):
-    if tokens[start].t != Type.NAME or start <= end - 3:
-        return
-    funcname = tokens[start].val
-    start += 1
-    end = find_closing(tokens, start, end)
-    vals = []
-    if start != end:
-
-def parse_list(tokens, start, end):
-    for i in range(start+1, end-1):
-        for val1, i in parse_val(tokens, start, i):
-            
-
-def parse_expr_help(tokens, i, min_precedence):
-    token = tokens[i]
-    
-    
-def parse_expr(tokens):
-    for val, end in parse_val(tokens, 0):
-        if end == len(tokens):
-            return val
 
 if __name__ == "__main__":
     s = "1.e-7 + 1. +4 (a + b) + f(a, b, c)"
     print(s)
     tokens = tokenize(s)
     print([print_token(t) for t in tokens])
-    print(get_string(tokens))
+    # print(get_string(tokens))
