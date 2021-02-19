@@ -36,6 +36,9 @@ B = expr addop
 parens = C rparen
 C = lparen expr
 
+attribute = D name
+D = name dot
+
 function = funcA funcB
 funcA = name lparen
 funcB = rparen
@@ -48,6 +51,7 @@ term = number
 term = parens
 term = product
 term = function
+term = attribute
 term = name
 
 expr = number
@@ -55,6 +59,7 @@ expr = parens
 expr = product
 expr = sum
 expr = function
+expr = attribute
 expr = name
 
 start = expr
@@ -157,10 +162,10 @@ print_tree = traverse_tree_generator(print_tree_func)
 
 
 if __name__ == "__main__":
-    s = "x+1+f(10, 11)"
+    s = "x + a.b"
     tokens = tokenize(s)
     print(tokens)
 
     print("\nStarting parse")
-    for tree : ParseTree in parse_cnf(tokens, 0, len(tokens), "start"):
+    for tree in parse_cnf(tokens, 0, len(tokens), "start"):
         print(print_tree(tokens, tree))
