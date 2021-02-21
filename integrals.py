@@ -7,23 +7,25 @@ from sympy.printing.c import C99CodePrinter # sympy.printing.c in some versions 
 from typing import Sequence, Tuple
 
 # This module uses the naming convention and data types in gaussians
-from gaussians import L, N, ABC
-import gaussians
-from metacode import Value
-from parser import generate_value
+import gaussians # for utility functions
+from gaussians import L, N, ABC # for clear types everywhere
+from metacode import Value # for type signature
+# from parser import generate_value
+from full_parser import generate_value
 
 # Symbols
-Z = sym.symbols('Z', integer=False) # not sure if integer=False is necessary
+Z = sym.symbols('Z', integer=False) # not sure if integer=False is necessary anymore
 # These are shorthand in the paper and in terachem
 # GA is just G - A, where A is the center of one of the Gaussians and G is a
 #   weighted average of the three Gaussian centers.
 GA = sym.symbols('GAx GAy GAz') # a list of three symbols for three_body_integral() to be clean.
 GB = sym.symbols('GBx GBy GBz')
 GC = sym.symbols('GCx GCy GCz')
-GX = (GA, GB, GC) # Basically a list of lists of symbols.
+GX = (GA, GB, GC) # Convenient list of all the symbols
 
 # Helper function for three_body_integral() that lowers the angular momentum of an orbital
 def succession(ja : int, i : int, abc : ABC) -> ABC:
+    # convert to a list because tuples are immutable
     abc2 = [list(a) for a in abc]
     abc2[ja][i] -= 1
     return tuple(tuple(a) for a in abc2)
@@ -93,7 +95,6 @@ def generate_integrals(max_l : L) -> Sequence[Tuple[ABC, Value]]:
     orbitals = gaussians.generate_orbitals(max_l)
     n = len(orbitals)
     n2 = n*n
-    n3 = n2*n
     # need all permutations of 3 orbitals, since order matters because of A,B,C being differently labeled centers.
     i = 0
     for abc in gaussians.generate_triples(max_l):
@@ -113,6 +114,7 @@ def generate_integral_gradients(max_l : L):
     for abc in gaussians.generate_triples(max_l):
         integral = three_body_integral(abc)
         derivs = []
+        # Hardcoded to take the integral wrt C
         for GCx in GC:
             # d/dCx = -d/d(Gx-Cx)
             d = -sym.diff(integral, GCx)

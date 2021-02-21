@@ -30,7 +30,8 @@ def main(MAX_L):
     # Generate and print function for dipoles
     function_disclaimer = printing.generate_disclaimer(function_disclaimer_text)
     # print(printing.generate_update_func(1, "D", "DipoleMatrix", function_disclaimer, MAX_L))
-    print(printing.generate_update_func(2, "Q", "QuadrupoleMatrix", function_disclaimer, MAX_L))
+    print(printing.generate_update_func_gpu(1, "D", "DipoleMatrix", function_disclaimer, MAX_L))
+    # print(printing.generate_update_func(2, "Q", "QuadrupoleMatrix", function_disclaimer, MAX_L))
 
 if __name__ == "__main__":
     # argument parsing

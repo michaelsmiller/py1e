@@ -1,8 +1,10 @@
 import re
 from integrals import generate_integrals
-from parser import generate_value
+# from parser import generate_value
+from full_parser import generate_value
 import gaussians as gauss
 from gaussians import L, N, ABC # types
+from typing import Sequence
 
 from metacode import *
 import copy
@@ -13,7 +15,9 @@ tab = "  " # TeraChem C standard
 NFS = [int((l+1)*(l+2)/2) for l in range(10)] # number of functions at every angular momentum
 
 GX = ["GA", "GB", "GC"]
-integral_params = [Var(GA, "double3") for GA in GX] + [Var("Z", "double")]
+GX_vars = [Var(GA, "double3") for GA in GX]
+Z_var = Var("Z", "double")
+integral_params = GX_vars + [Z_var]
 
 ######### File Writing ###############
 
@@ -42,7 +46,7 @@ def generate_disclaimer(text):
         length = 0
         line = words[iw]
         if len(line) > chars_per_line:
-            print('Warning: "{}" has length {}, which exceeds the allowed line length of {}'.format(line, len(line), chars_per_line))
+            print(f'Warning: "{line}" has length {len(line)}, which exceeds the allowed line length of {chars_per_line}')
         iw += 1
         for jw in range(iw, len(words)):
             w = words[jw]
@@ -57,7 +61,7 @@ def generate_disclaimer(text):
         num_extra_spaces = chars_per_line - len(line)
         left_spaces = " " * int(num_extra_spaces/2)
         right_spaces = " " * (int(num_extra_spaces/2) + num_extra_spaces % 2)
-        line = "{0}{1}{2}".format(left_spaces, line, right_spaces)
+        line = f"{left_spaces}{line}{right_spaces}"
         
         s += "{0}{1}{2}{1}{0}\n".format("*", buffer, line)
     
@@ -109,17 +113,18 @@ def num_dscales(abc : ABC) -> int:
 
 # alternative formatting of variables
 def variable_name_separate(base, c : N, mi : L, mj : L) -> str:
-    elements = "[I+{}][J+{}]".format(mi, mj)
-    xyz = "x" * c[0] + "y" * c[1] + "z" * c[2]
-    return "{0}{1}{2}".format(base, xyz, elements)
+    elements = f"[I+{mi}][J+{mj}]"
+    xyz = "".join([c[i]*"xyz"[i] for i in range(3)])
+    return f"{base}{xyz}{elements}"
 def variable_name_double3(base, c : N, mi : L, mj : L) -> str:
     if sum(c) == 1:
         # D[I+0][J+0].x
         return "{0}{2}.{1}".format(base, xyz, elements)
+        return f"{base}{elements}.{xyz}"
     elif sum(c) == 2:
-        raise ValueError("xyz = {} not supported with array type DOUBLE3_ARRAYS".format(xyz))
+        raise ValueError(f"xyz = {xyz} not supported with array type DOUBLE3_ARRAYS")
 
-def generate_updates(lc : L, II : L, JJ : L, dest : str):
+def generate_updates(lc : L, II : L, JJ : L, dest : str) -> Sequence[Statement]:
     assert II <= JJ
     updates = []
     for mi in range(NFS[II]):
@@ -135,8 +140,7 @@ def generate_updates(lc : L, II : L, JJ : L, dest : str):
                 rhs = Product(["dscale"]*num_dscales(abc) + [rhs])
                 statement = Update(variable_name, Op.PLUSEQ, rhs)
                 updates.append(statement)
-    result = Statements(updates)
-    return result
+    return updates 
 
 def generate_update_func(lc : L, dest : str, funcname : str, function_disclaimer : str, max_l : L):
     II_var = Var("II", "int")
@@ -146,12 +150,61 @@ def generate_update_func(lc : L, dest : str, funcname : str, function_disclaimer
     for II in range(max_l+1):
         for JJ in range(II, max_l+1):
             body = generate_updates(lc, II, JJ, dest)
+            body = Statements(body)
             condition = And(Condition(II_var, Op.EQ, Var(II)), Condition(JJ_var, Op.EQ, Var(JJ)))
             statements.append(If(condition, body, has_else=II+JJ>0))
     body = Statements(statements)
     
     params = copy.deepcopy(integral_params)
     params += [Var("factor", "double"), II_var, JJ_var, Var("I","int"), Var("J","int")]
-    params += [Var("{}{}".format(dest, x), "double **") for x in "xyz"]
+    params += [Var(f"{dest}{x}", "double **") for x in "xyz"]
     function = Function("void", f"update{funcname}", params, body)
     return str(function)
+
+
+def generate_updates_gpu(lc : L, II : L, JJ : L, dest : str) -> Statements:
+    assert II <= JJ
+    I_var = Var("I", "int")
+    J_var = Var("J", "int")
+    updates = []
+    # Calculate GA, GB, GC, Z
+    updates += [Assignment(Var(f"G{A}","double3"),f"{{G.x-{A}.x,G.y-{A}.y,G.z-{A}.z}}",True) for A in "ABC"]
+
+    for mi in range(NFS[II]):
+        for mj in range(NFS[JJ]):
+            a = gauss.index_to_n(II, mi)
+            b = gauss.index_to_n(JJ, mj)
+            for mc in range(NFS[lc]):
+                c = gauss.index_to_n(lc, mc)
+                abc = (a,b,c)
+                funcname = gauss.abc_to_funcname(abc)
+                variable_name = variable_name_separate(dest, c, mi, mj)
+                rhs = Call(funcname, integral_params)
+                rhs = Product(["dscale"]*num_dscales(abc) + [rhs])
+                statement = Update(variable_name, Op.PLUSEQ, rhs)
+                updates.append(statement)
+    body = Statements(updates)
+
+    I_start = Var("I_start", "int")
+    J_start = Var("J_start", "int")
+    I_end = Operation(Op.ADD, I_start, Var("ni", "int"))
+    J_end = Operation(Op.ADD, J_start, Var("nj", "int"))
+    body = default_for(I_var, I_start, I_end, body)
+    body = default_for(J_var, J_start, J_end, body)
+    return Statements(body)
+
+def generate_update_func_gpu(lc : L, dest : str, funcname : str, function_disclaimer : str, max_l : L):
+    II_var = Var("II", "int")
+    JJ_var = Var("JJ", "int")
+    # params = copy.deepcopy(integral_params)
+    params = [Var("C", "double3")]
+    params += [Var("factor", "double")] 
+    params += [Var(f"{dest}{x}", "double **") for x in "xyz"]
+    statements = [];
+    for II in range(max_l+1):
+        for JJ in range(II, max_l+1):
+            body = generate_updates_gpu(lc, II, JJ, dest)
+            func = Function("__global__ void", f"update{funcname}<{II},{JJ}>", params, body) 
+            statements.append(func)
+    statements = Statements(statements)
+    return statements

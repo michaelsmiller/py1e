@@ -5,6 +5,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List
 
+from full_parser import *
+
 # TC standard is 2 spaces
 tab = "  "
 def indent(text):
@@ -20,7 +22,7 @@ class Operator:
     def __eq__(self, other):
         return self.symbol == other.symbol and self.num_operands == other.num_operands
     
-# Just a container, not meant to be initialized
+# Just a container namespace
 class Op:
     # Binary operators
     LT = Operator("<", 2)
@@ -68,13 +70,15 @@ class Variable(Value):
     def __str__(self):
         return str(self.name)
     def __eq__(self, other):
-        return self.fields() == other.fields()
+        # return self.fields() == other.fields()
+        return self.name == other.name
+
 def Int(name):
     return Variable(name, "int")
 def Double(name):
     return Variable(name, "double")
 
-# The easiest operator
+# Easy operator
 @dataclass
 class Parens(Value):
     val: Value
@@ -116,6 +120,7 @@ class OpTree(Value):
         if self.right is None:
             return f"{self.op}{self.left}"
         return f"{self.left} {self.op} {self.right}"
+Operation = OpTree # alias
 def op_reduce(op, vals : List[Value]) -> OpTree:
     nvals = len(vals)
     if nvals == 0:
@@ -225,6 +230,7 @@ class Assignment(Statement): # Can technically be a Value but whatever
     var : Variable
     rhs : Value
     declare : bool = True
+    # TODO: debug this
     def __str__(self):
         if self.declare:
             lhs = self.var.declare()
