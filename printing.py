@@ -1,7 +1,6 @@
 import re
 from integrals import generate_integrals
-# from parser import generate_value
-from full_parser import generate_value
+from parser import generate_value
 import gaussians as gauss
 from gaussians import L, N, ABC # types
 from typing import Sequence

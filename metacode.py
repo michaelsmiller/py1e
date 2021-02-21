@@ -5,8 +5,6 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List
 
-from full_parser import *
-
 # TC standard is 2 spaces
 tab = "  "
 def indent(text):

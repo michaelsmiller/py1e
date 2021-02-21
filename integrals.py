@@ -10,8 +10,7 @@ from typing import Sequence, Tuple
 import gaussians # for utility functions
 from gaussians import L, N, ABC # for clear types everywhere
 from metacode import Value # for type signature
-# from parser import generate_value
-from full_parser import generate_value
+from parser import generate_value
 
 # Symbols
 Z = sym.symbols('Z', integer=False) # not sure if integer=False is necessary anymore

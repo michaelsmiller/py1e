@@ -1,116 +1,246 @@
+from __future__ import annotations # So that classes can include their definition
+import sys
+from dataclasses import dataclass, field
+from typing import List, Sequence, Tuple, Callable, Any
+
+from lexer import Token, tokenize, token_tags, TokenType, is_valid_tag
 import metacode as meta
-from arpeggio import OneOrMore, ZeroOrMore, Optional, UnorderedGroup, PTNodeVisitor
-import metacode as meta
-from arpeggio import OneOrMore, ZeroOrMore, Optional, UnorderedGroup, PTNodeVisitor
-from arpeggio import EOF, And, Not, RegExMatch as Reg, visit_parse_tree, text, isstr, Terminal
-from arpeggio import NoMatch
-from arpeggio.cleanpeg import ParserPEG
 
-grammar = """
-// Tokenizer
-integer = r'[+-][0-9]+'
-real = r'[+-]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+|[0-9]+)([eEdD][+-]?[0-9]+)?'
-number = real / integer
-name = r'[a-zA-Z_]+[a-zA-Z_0-9]*'
-op = '*' / '/' / '+' / '-'
+class ParsingError(Exception):
+    pass
 
-attribute = name '.' name
-val = number / attribute / name 
+def fail(s : str=None):
+    if s is None:
+        s = "Generic parsing error: fill in later"
+    raise ParsingError(s)
+def get_range(tokens, i, j):
+    return ''.join([token.val for token in tokens[i:j]])
 
-parens = '(' expr ')'
-product = factor (op factor)+
-factor = parens / val
+# TOKENS = number | name | ( | ) | . | , | operator | e
 
-expr = product / parens / val
-start = expr EOF
+#########################################
+#  Grammar (not left recursive I hope)  #
+#########################################
+# operation = number operator number
+# start = operation epsilon
+
+grammar="""
+product = A term
+A = term mulop
+
+sum = B expr
+B = expr addop
+
+parens = C rparen
+C = lparen expr
+
+attribute = D name
+D = name dot
+
+function = funcA funcB
+funcA = funcname lparen
+funcB = rparen
+funcB = list rparen
+list = expr listA
+list = expr
+listA = comma list
+
+term = number
+term = parens
+term = product
+term = function
+term = attribute
+term = name
+
+expr = number
+expr = parens
+expr = product
+expr = sum
+expr = function
+expr = attribute
+expr = name
+
+start = expr
 """
 
-parser = ParserPEG(grammar, "start", reduce_tree=False, skipws=True)
+@dataclass
+class Rule:
+    name : str
+    left : str
+    right : str = None
 
-class ExpressionPrinter(PTNodeVisitor):
-    def visit__default__(self, node, children):
-        is_leaf = isinstance(node, Terminal)
-        value = node.value
-        print(f"{node.rule_name}: {value}")
-        if not is_leaf:
-            return "".join(children)
-        if value not in "),(":
-            return value
-        return None
-    def visit_operation(self, node, children):
-        self.visit__default__(node, children)
-        if len(children) == 2:
-            return self.visit__default__(node, children)
-        return " ".join(children)
-    def visit_parens(self, node, children):
-        self.visit__default__(node, children)
-        assert len(children) == 1
-        return f"({children[0]})"
+    def __str__(self):
+        s = f"{self.name} -> {self.left}"
+        if self.right is not None:
+            s += f" {self.right}"
+        return s
+def is_unit(rule : Rule) -> bool:
+    return rule.right is None
+def is_token(rule : Rule) -> bool:
+    return rule.left is None
 
-class ValueGenerator(PTNodeVisitor):
-    def visit__default__(self, node, children):
-        if children is not None and len(children)==1:
-            return children[0]
-        if node.value not in "),(.":
-            return node.value
-    def visit_product(self, node, children):
-        assert len(children) % 2 == 1
-        while len(children) > 1:
-            order = [children[i] for i in [1,0,2]]
-            val = meta.OpTree(*order)
-            children = [val] + children[3:]
-        return children[0]
-    def visit_op(self, node, children):
-        return meta.Operator(node.value, 2)
-    def visit_unary_op(self, node, children):
-        return meta.Operator(node.value, 1)
-    def visit_val(self, node, children):
-        assert len(children) == 1
+
+# TODO: convert to a CNF grammar automatically
+# Don't actually need the final step of not allowing tokens and nonterminals in the same rule
+def generate_rules(grammar):
+    rules = []
+    for line in grammar.split("\n"):
+        line = line.strip()
+        if len(line) == 0:
+            continue
+
+        assert "=" in line
+        split = line.split()
+        assert len(split) >= 3
+        rule_name = split[0]
+        # if anything on the rhs is a token, need to change it and add another rule
+        rhs = []
+        for r in split[2:]:
+            rhs.append(r)
+        rules.append(Rule(rule_name, *rhs))
+    return rules
+all_rules = generate_rules(grammar)
+
+
+@dataclass
+class ParseNode:
+    name : str
+    start : int
+    end : int
+    children : Sequence[ParseNode] = field(default_factory=list)
+ParseTree = ParseNode
+def is_leaf(node : ParseNode) -> bool:
+    return len(node.children) == 0
+
+def parse_cnf(tokens, start, end, label, print_each=False):
+    if print_each:
+        print(f"{label} ?= {get_range(tokens, start, end)}")
+    if is_valid_tag(label):
+        if end - start == 1 and label.upper() == tokens[start].tag:
+            yield ParseNode(label.upper(), start, end, [])
+    else:
+        # attempt to match all rules
+        for rule in all_rules:
+            # TODO: sort the rules.
+            if rule.name == label:
+                if is_unit(rule):
+                    for child in parse_cnf(tokens, start, end, rule.left):
+                        yield ParseNode(label, start, end, [child])
+                elif end-start >= 2:
+                    for p in range(start+1, end):
+                        # print(f"{start}-{p}: {get_range(tokens, start, p)}")
+                        # print(f"{p}-{end}: {get_range(tokens, p, end)}")
+                        for lchild in parse_cnf(tokens, start, p, rule.left):
+                            for rchild in parse_cnf(tokens, p, end, rule.right):
+                                yield ParseNode(label, start, end, [lchild, rchild])
+
+# takes in f(stream, node, children)
+def traverse_tree_generator(f):
+    def traverse_node(tokens, node : ParseNode):
+        children = list([traverse_node(tokens, child) for child in node.children])
+        return f(tokens, node, children)
+    return traverse_node
+
+
+def print_tree_func(tokens, node, children):
+    s = ''
+    s += f"{node.name} \"{''.join([token.val for token in tokens[node.start:node.end]])}\""
+    if children != []:
+        s += ":\n"
+        for child in children:
+            # adds spaces before
+            child_string = "\n".join([f"  {line}" for line in child.split('\n')])
+            s += child_string + "\n"
+    s = s.strip()
+    return s
+print_tree = traverse_tree_generator(print_tree_func)
+
+def chain(values):
+    new_values = []
+    for v in values:
+        if isinstance(v, list):
+            new_values += v
+        else:
+            new_values.append(v)
+    return new_values
+
+default_type = "double"
+def generate_AST_func(tokens, node, children):
+    # children are already exactly how I want them
+    # Children are either tokens or Value-like nodes already
+    token = tokens[node.start]
+    val = token.val
+    tag = node.name
+    children = chain(children)
+    children = [child for child in children if child is not None]
+
+    # Easy case
+    if tag in ["list", "listA", "funcA", "funcB", "A", "B", "C", "D"]:
+        return children
+
+    # Terminal nodes are just tokens
+    if len(children) == 0:
+        assert len(node.children) == 0
+        if tag in ["MULOP", "ADDOP"]:
+            return meta.Operator(val, 2)
+        elif tag in ["NAME", "FUNCNAME"]:
+            return val
+        elif tag == "NUMBER":
+            return meta.Constant(val) # type shouldn't matter in metacode
+        # don't want these
+        elif tag in ["DOT", "COMMA", "LPAREN", "RPAREN"]:
+            return None
+        else:
+            fail(f"Case for {token.tag} not included")
+    elif len(children) == 1:
         child = children[0]
-        if isinstance(child, meta.Value):
+        if tag == "start":
             return child
-        return meta.Var(children[0])
-    def visit_parens(self, node, children):
-        return meta.Parens(children[0])
-    def visit_attribute(self, node, children):
-        # print(children)
-        s = "{}.{}".format(*children)
-        return meta.Var(s)
+        elif tag == "parens":
+            return meta.Parens(child)
+        elif tag in ["expr", "term"]:
+            # Doing the variable creation here
+            if isinstance(child, str):
+                return meta.Var(child, default_type)
+            else:
+                return child
     
-def get_print_tree(input_string : str) -> str:
-    parse_tree = parser.parse(input_string)
-    return visit_parse_tree(parse_tree, ExpressionPrinter())
-def print_tree(input_string : str) -> None:
-    print(get_print_tree(input_string))
-    
-def generate_value(input_string : str) -> meta.Value:
-    parse_tree = parser.parse(input_string)
-    return visit_parse_tree(parse_tree, ValueGenerator())
+    if tag == "function":
+        # children should be the funcname variable
+        return meta.Call(children[0], children[1:])
+    elif tag == "attribute":
+        return meta.Var(".".join(children), default_type)
+    elif tag in ["sum", "product"]:
+        assert len(children) == 3
+        return meta.Operation(children[1], children[0], children[2])
+    else:
+        fail(f"Couldn't parse {node.name}")
+generate_AST = traverse_tree_generator(generate_AST_func)
 
-def run_interpreter(f):
-    while True:
-        input_string = input("\nExpr: ")
-        f(input_string)
-def try_print_tree(input_string):
-    try:
-        return get_print_tree(input_string)
-    except RecursionError:
-        print("Recursion Error")
-    except NoMatch as e:
-        print(f"No Match for '{input_string}'")
-        print(e)
+def parse(s : str) -> ParseTree:
+    tokens = tokenize(s)
+    return next(parse_cnf(tokens, 0, len(tokens), "start"))
 
-def print_thing(s):
-    print(try_print_tree(s))
-    print("")
-def print_value(s):
-    print(generate_value(s))
+def generate_value(s : str) -> meta.Value:
+    tree = parse(s)
+    return generate_AST(tokens, tree)
+
+
 if __name__ == "__main__":
-    run_interpreter(print_value);
-    # S = ["(a + b) + c",
-    #     "(a + b)",
-    #     "a + (b + c)"]
-    # trees = [try_print_tree(s) for s in S]
-    # print(trees)
+    # for rule in all_rules:
+    #     print(str(rule))
 
-    # print(generate_value(s))
+    s = "x() + a.b * 6"
+    print(s)
+    tokens = tokenize(s)
+    print(tokens)
+
+    print("\nStarting parse")
+    # can do multiple parses
+    # for tree in parse_cnf(tokens, 0, len(tokens), "start"):
+    #     print(print_tree(tokens, tree))
+    tree = next(parse_cnf(tokens, 0, len(tokens), "start"))
+    # print(print_tree(tokens, tree))
+    ast = generate_AST(tokens, tree)
+    # ast = generate_value(s)
+    print(str(ast))
