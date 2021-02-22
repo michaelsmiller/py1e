@@ -24,6 +24,8 @@ def get_range(tokens, i, j):
 # operation = number operator number
 # start = operation epsilon
 
+# TODO: To implement CYK, best to automate a conversion to a proper CNF grammar.
+# This one is not completely CNF
 grammar="""
 product = A term
 A = term mulop
@@ -33,9 +35,6 @@ B = expr addop
 
 parens = C rparen
 C = lparen expr
-
-attribute = D name
-D = name dot
 
 function = funcA funcB
 funcA = funcname lparen
@@ -83,6 +82,7 @@ def is_token(rule : Rule) -> bool:
 # TODO: convert to a CNF grammar automatically
 # Don't actually need the final step of not allowing tokens and nonterminals in the same rule
 def generate_rules(grammar):
+    rulenames = set([])
     rules = []
     for line in grammar.split("\n"):
         line = line.strip()
@@ -93,13 +93,30 @@ def generate_rules(grammar):
         split = line.split()
         assert len(split) >= 3
         rule_name = split[0]
+        rulenames.add(rule_name)
         # if anything on the rhs is a token, need to change it and add another rule
         rhs = []
         for r in split[2:]:
             rhs.append(r)
         rules.append(Rule(rule_name, *rhs))
-    return rules
-all_rules = generate_rules(grammar)
+    return list(rulenames), rules
+all_rulenames, all_rules = generate_rules(grammar)
+rule_map = {name : [] for name in all_rulenames}
+for name in all_rulenames:
+    for rule in all_rules:
+        if rule.name == name:
+            rule_map[name].append(rule)
+
+
+# IndexRule = Tuple[int, int, int]
+# def rules_to_irules(rules) -> Sequence[IndexRule]:
+#     index_map = {rule.name : i for i, rule in enumerate(rules)}
+#     irules = []
+#     for rule in rules:
+#         irules.append(index_map[rule.name], index_map[rule.left], index_map[rule.right])
+#     return irules
+# all_irules = rules_to_irules(all_rules)
+# token_indices = [i for i,_,_ in all_irules if is_token(all_rules)]
 
 
 @dataclass
@@ -115,24 +132,24 @@ def is_leaf(node : ParseNode) -> bool:
 def parse_cnf(tokens, start, end, label, print_each=False):
     if print_each:
         print(f"{label} ?= {get_range(tokens, start, end)}")
+    # This is how we check for tokens
     if is_valid_tag(label):
         if end - start == 1 and label.upper() == tokens[start].tag:
             yield ParseNode(label.upper(), start, end, [])
     else:
         # attempt to match all rules
-        for rule in all_rules:
+        for rule in rule_map[label]:
             # TODO: sort the rules.
-            if rule.name == label:
-                if is_unit(rule):
-                    for child in parse_cnf(tokens, start, end, rule.left):
-                        yield ParseNode(label, start, end, [child])
-                elif end-start >= 2:
-                    for p in range(start+1, end):
-                        # print(f"{start}-{p}: {get_range(tokens, start, p)}")
-                        # print(f"{p}-{end}: {get_range(tokens, p, end)}")
-                        for lchild in parse_cnf(tokens, start, p, rule.left):
-                            for rchild in parse_cnf(tokens, p, end, rule.right):
-                                yield ParseNode(label, start, end, [lchild, rchild])
+            if is_unit(rule):
+                for child in parse_cnf(tokens, start, end, rule.left):
+                    yield ParseNode(label, start, end, [child])
+            elif end-start >= 2:
+                for p in range(start+1, end):
+                    # print(f"{start}-{p}: {get_range(tokens, start, p)}")
+                    # print(f"{p}-{end}: {get_range(tokens, p, end)}")
+                    for lchild in parse_cnf(tokens, start, p, rule.left):
+                        for rchild in parse_cnf(tokens, p, end, rule.right):
+                            yield ParseNode(label, start, end, [lchild, rchild])
 
 # takes in f(stream, node, children)
 def traverse_tree_generator(f):
@@ -187,6 +204,8 @@ def generate_AST_func(tokens, node, children):
             return val
         elif tag == "NUMBER":
             return meta.Constant(val) # type shouldn't matter in metacode
+        elif tag == "ATTRIBUTE":
+            return meta.Var(val, default_type)
         # don't want these
         elif tag in ["DOT", "COMMA", "LPAREN", "RPAREN"]:
             return None
@@ -208,8 +227,6 @@ def generate_AST_func(tokens, node, children):
     if tag == "function":
         # children should be the funcname variable
         return meta.Call(children[0], children[1:])
-    elif tag == "attribute":
-        return meta.Var(".".join(children), default_type)
     elif tag in ["sum", "product"]:
         assert len(children) == 3
         return meta.Operation(children[1], children[0], children[2])
@@ -217,12 +234,9 @@ def generate_AST_func(tokens, node, children):
         fail(f"Couldn't parse {node.name}")
 generate_AST = traverse_tree_generator(generate_AST_func)
 
-def parse(s : str) -> ParseTree:
-    tokens = tokenize(s)
-    return next(parse_cnf(tokens, 0, len(tokens), "start"))
-
 def generate_value(s : str) -> meta.Value:
-    tree = parse(s)
+    tokens = tokenize(s)
+    tree = next(parse_cnf(tokens, 0, len(tokens), "start"))
     return generate_AST(tokens, tree)
 
 
@@ -230,7 +244,8 @@ if __name__ == "__main__":
     # for rule in all_rules:
     #     print(str(rule))
 
-    s = "x() + a.b * 6"
+    # s = "x() + a.b * 6"
+    s = "GA.z*(GB.z*GC.z + Z) + GB.z*Z + GC.z*Z"
     print(s)
     tokens = tokenize(s)
     print(tokens)
@@ -240,7 +255,7 @@ if __name__ == "__main__":
     # for tree in parse_cnf(tokens, 0, len(tokens), "start"):
     #     print(print_tree(tokens, tree))
     tree = next(parse_cnf(tokens, 0, len(tokens), "start"))
-    # print(print_tree(tokens, tree))
+    print(print_tree(tokens, tree))
     ast = generate_AST(tokens, tree)
     # ast = generate_value(s)
     print(str(ast))

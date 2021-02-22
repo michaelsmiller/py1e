@@ -8,7 +8,7 @@ from typing import Sequence
 
 # All currently accepted tags
 # tokenizer guaranteed to return one of these
-token_tags = ["MULOP", "ADDOP", "NAME", "FUNCNAME", "NUMBER", "DOT", "COMMA", "LPAREN", "RPAREN"]
+token_tags = ["MULOP", "ADDOP", "ATTRIBUTE", "NAME", "FUNCNAME", "NUMBER", "DOT", "COMMA", "LPAREN", "RPAREN"]
 
 def is_valid_tag(t):
     return t.upper() in token_tags
@@ -69,10 +69,22 @@ def tokenize(s) -> Sequence[Token]:
             i = j
     for token in tokens:
         assert is_valid_tag(token.tag)
+
+    # Do a pass to collect attributes and make life a tiny bit easier
+    temp_tokens = []
+    i = 0
+    while i < len(tokens):
+        if i < len(tokens)-2 and tokens[i].tag == "NAME" and tokens[i+1].tag=="DOT" and tokens[i+2].tag=="NAME":
+            temp_tokens.append(Token("ATTRIBUTE", "".join([tokens[j].val for j in range(i,i+3)])))
+            i += 3
+        else:
+            temp_tokens.append(tokens[i])
+            i += 1
+    tokens = temp_tokens
     return tokens
 
 if __name__ == "__main__":
-    s = "1.e-7 + 1. +4 (a + b) + f(a, b, c)"
+    s = "45 + a.x"
     print(s)
     tokens = tokenize(s)
     print(', '.join([print_token(t) for t in tokens]))

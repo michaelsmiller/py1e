@@ -94,12 +94,14 @@ def generate_integrals(max_l : L) -> Sequence[Tuple[ABC, Value]]:
     orbitals = gaussians.generate_orbitals(max_l)
     n = len(orbitals)
     n2 = n*n
+    n3 = n2*n
     # need all permutations of 3 orbitals, since order matters because of A,B,C being differently labeled centers.
     i = 0
     for abc in gaussians.generate_triples(max_l):
         if i % n2 == 0:
             print("{}%".format(100. * i/n3))
         integral = print_integral(abc)
+        print(integral)
         integral = generate_value(integral)
         yield (abc, integral)
         i += 1
