@@ -126,6 +126,7 @@ def variable_name_double3(base, c : N, mi : L, mj : L) -> str:
 def generate_updates(lc : L, II : L, JJ : L, dest : str) -> Sequence[Statement]:
     assert II <= JJ
     updates = []
+    factor = Var("factor", "double")
     for mi in range(NFS[II]):
         for mj in range(NFS[JJ]):
             a = gauss.index_to_n(II, mi)
@@ -136,7 +137,7 @@ def generate_updates(lc : L, II : L, JJ : L, dest : str) -> Sequence[Statement]:
                 funcname = gauss.abc_to_funcname(abc)
                 variable_name = variable_name_separate(dest, c, mi, mj)
                 rhs = Call(funcname, integral_params)
-                rhs = Product(["dscale"]*num_dscales(abc) + [rhs])
+                rhs = Product([factor] + ["dscale"]*num_dscales(abc) + [rhs])
                 statement = Update(variable_name, Op.PLUSEQ, rhs)
                 updates.append(statement)
     return updates 
